@@ -1,0 +1,39 @@
+# Example configuration file for SendRepo
+# Customize the paths, remotes, and other settings as needed.
+# Rename this file to config.yaml to use it.
+
+root: ~/
+projects:
+  your-project:
+    path: "{root}/projects/your-project/"
+    remote: user@127.0.0.1:/home/user/your-project/
+    port: 22
+    backup_dir: /home/user/your-project/.sendrepo/backups/{timestamp}/
+    exclude:
+      - .git
+      - node_modules
+      - __pycache__
+      - .sendrepo
+    # pre_send: |
+    #   echo "Pulling latest changes..."
+    #   git pull
+    # post_send: |
+    #   echo "Restarting service..."
+    #   ssh -t user@127.0.0.1 "cd /home/user/your-project && sudo docker compose up --build -d"
+  
+  another-project:
+    path: "{root}/projects/another-project/"
+    remote: user@127.0.0.1:/home/user/another-project/
+    port: 22
+    backup_dir: /home/user/another-project/.sendrepo/backups/{timestamp}/
+    exclude:
+      - .git
+      - node_modules
+      - __pycache__
+      - .sendrepo
+    # pre_send: |
+    #   echo "Pulling latest changes..."
+    #   git pull
+    # post_send: |
+    #   echo "Restarting service..."
+    #   ssh -t user@127.0.0.1 "cd /home/user/another-project && sudo docker compose up --build -d"
