@@ -2,6 +2,11 @@
 # Customize the paths, remotes, and other settings as needed.
 # Rename this file to config.yaml to use it.
 
+config_sync:
+  # Use 'git pull' if your config is in a git repository
+  command: "git pull"
+  # Or use 'rclone' to sync from a cloud storage provider
+  # command: "rclone sync your_remote:path/to/config_folder ."
 root: ~/
 projects:
   your-project:

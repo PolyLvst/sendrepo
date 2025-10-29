@@ -67,6 +67,35 @@ class SendRepo:
         """Returns a list of project names from the config."""
         return list(self.config.get('projects', {}).keys())
 
+    def sync_config(self):
+        """Syncs the configuration file itself based on 'config_sync' settings."""
+        if 'config_sync' not in self.config:
+            print("Warning: --sync-config was passed, but 'config_sync' section is not defined in config.yaml.")
+            return
+
+        sync_settings = self.config['config_sync']
+        command = sync_settings.get('command')
+        
+        if not command:
+            print("Error: 'config_sync' section is missing the 'command' key.")
+            return
+
+        # The working directory should be where the config file is.
+        config_dir = os.path.dirname(self.config_path)
+
+        print(f"Syncing configuration using command: '{command}' in '{config_dir}'")
+        return_code = self._run_command(command, cwd=config_dir)
+
+        if return_code == 0:
+            print("Configuration sync completed successfully.")
+            # Reload config after sync
+            print("Reloading configuration...")
+            self.config = self._load_config(self.config_path)
+            self.projects = self._get_project_choices()
+        else:
+            print(f"Configuration sync failed with return code: {return_code}")
+            sys.exit(1) # Exit if config sync fails
+
     def _run_command(self, command, cwd=None):
         """Runs a command and streams its output."""
         process = subprocess.Popen(command, stdout=subprocess.PIPE, stderr=subprocess.STDOUT, universal_newlines=True, cwd=cwd, shell=isinstance(command, str))
@@ -165,12 +194,25 @@ class SendRepo:
 def main():
     """Main function to run the sendrepo script."""
     
+    # We need to handle --sync-config before fully parsing to get updated project choices
+    # A bit of a chicken-and-egg problem. We create a temporary parser for this one argument.
+    temp_parser = argparse.ArgumentParser(add_help=False)
+    temp_parser.add_argument('--sync-config', action='store_true')
+    temp_args, remaining_argv = temp_parser.parse_known_args()
+
     syncer = SendRepo()
+
+    if temp_args.sync_config:
+        syncer.sync_config()
     
     parser = argparse.ArgumentParser(description="Sync a project to a remote server using rsync (SSH key authentication).")
+    parser.add_argument('--sync-config', action='store_true', help="Sync the configuration from its source before running the project sync.")
     parser.add_argument('project', help="The name of the project to sync.", choices=syncer.projects)
     parser.add_argument('--dry-run', action='store_true', help="Perform a dry run without making any changes.")
-    args = parser.parse_args()
+    
+    # We parse the *remaining* arguments after pulling out --sync-config, but we need to add it back
+    # for the help message to be correct. The actual value has already been handled.
+    args = parser.parse_args(remaining_argv)
 
     syncer.sync_project(args.project, args.dry_run)
 

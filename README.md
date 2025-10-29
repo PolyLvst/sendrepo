@@ -77,6 +77,13 @@ The script searches for `config.yaml` in the following order, using the first on
 ### Example `config.yaml`
 
 ```yaml
+# Command to sync this config file from its source.
+config_sync:
+  # Example using git:
+  command: "git pull"
+  # Example using rclone (syncs a cloud folder to the config directory):
+  # command: "rclone sync gdrive:sendrepo_config ."
+
 root: ~/Dev
 projects:
   my-project:
@@ -99,6 +106,9 @@ projects:
 
 ### Configuration Options
 
+-   `config_sync`: (Optional) A command to sync your configuration file itself. When you run the script with the `--sync-config` flag, this command will be executed in the directory containing your `config.yaml`. This is useful for pulling the latest version from a Git repository or syncing from a cloud storage provider.
+    -   **Git Example**: `command: "git pull"`
+    -   **rclone Example**: `command: "rclone sync gdrive:sendrepo_config ."` (This syncs the contents of the `sendrepo_config` folder from a Google Drive remote to the current directory).
 -   `root`: (Optional) A base path that can be referenced in your project paths.
 -   `projects`: A dictionary of all your projects.
     -   `<project-name>`: A unique name for your project.
@@ -117,6 +127,12 @@ Once installed and configured, you can sync your projects from any directory.
 -   **Sync a project:**
     ```bash
     sendrepo.py my-project
+    ```
+
+-   **Update your configuration and then sync a project:**
+    If you store your `config.yaml` in a separate repository, you can first pull the latest changes and then immediately run the sync.
+    ```bash
+    sendrepo.py --sync-config my-project
     ```
 
 -   **Perform a dry run:**
