@@ -1,3 +1,4 @@
+#!/usr/bin/env python3
 import os
 import sys
 import yaml
@@ -6,7 +7,11 @@ import argparse
 from datetime import datetime
 
 class SendRepo:
-    def __init__(self, config_path='config.yaml'):
+    def __init__(self, config_path=None):
+        if config_path is None:
+            script_dir = os.path.dirname(os.path.abspath(__file__))
+            config_path = os.path.join(script_dir, 'config.yaml')
+        
         self.config = self._load_config(config_path)
         self.projects = self._get_project_choices()
 
