@@ -46,7 +46,33 @@ SendRepo is a powerful and flexible Python script that automates the process of 
 
 ## Configuration
 
-The script is controlled by a `config.yaml` file in the same directory.
+The script is controlled by a `config.yaml` file. To keep your configuration private when using this public repository, you should store your `config.yaml` outside of the script directory and use one of the loading methods below.
+
+It is highly recommended to add `config.yaml` to a `.gitignore` file in your local clone of this repository.
+
+### Configuration Loading Priority
+
+The script searches for `config.yaml` in the following order, using the first one it finds:
+
+1.  **Environment Variable**: The path specified in the `SENDREPO_CONFIG_PATH` environment variable. This is the most flexible method.
+    ```bash
+    export SENDREPO_CONFIG_PATH="/path/to/your/synced/folder/config.yaml"
+    ```
+
+2.  **User-Specific Directory**: A standard, user-level configuration directory.
+    -   **Linux/macOS**: `~/.config/sendrepo/config.yaml`
+    -   **Windows**: `%APPDATA%\sendrepo\config.yaml` (e.g., `C:\Users\YourUser\AppData\Roaming\sendrepo\config.yaml`)
+
+3.  **Adjacent Directory**: A folder named `sendrepo-config` located at the same level as the script's parent directory. This is useful for syncing your config in a separate Git repository.
+    ```
+    /some/path/
+    ├── sendrepo/         (The script repo)
+    │   └── sendrepo.py
+    └── sendrepo-config/  (Your private config repo)
+        └── config.yaml
+    ```
+
+4.  **Same Directory**: Next to the `sendrepo.py` script itself (the original behavior).
 
 ### Example `config.yaml`
 

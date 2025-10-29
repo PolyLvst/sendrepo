@@ -8,12 +8,47 @@ from datetime import datetime
 
 class SendRepo:
     def __init__(self, config_path=None):
-        if config_path is None:
-            script_dir = os.path.dirname(os.path.abspath(__file__))
-            config_path = os.path.join(script_dir, 'config.yaml')
+        self.config_path = self._find_config_file(config_path)
+        if not self.config_path:
+            print("Error: Could not find config.yaml.")
+            print("Please place it in one of the documented locations")
+            sys.exit(1)
         
-        self.config = self._load_config(config_path)
+        print(f"Loading config from: {self.config_path}")
+        self.config = self._load_config(self.config_path)
         self.projects = self._get_project_choices()
+
+    def _find_config_file(self, specified_path):
+        """Finds the config file in a prioritized list of locations."""
+        if specified_path and os.path.exists(specified_path):
+            return specified_path
+
+        # Path specified by environment variable
+        env_path = os.getenv('SENDREPO_CONFIG_PATH')
+        if env_path and os.path.exists(env_path):
+            return env_path
+
+        # User-specific config directory
+        if sys.platform == "win32":
+            user_config_path = os.path.join(os.getenv('APPDATA'), 'sendrepo', 'config.yaml')
+        else: # Linux, macOS
+            user_config_path = os.path.expanduser("~/.config/sendrepo/config.yaml")
+        
+        if os.path.exists(user_config_path):
+            return user_config_path
+
+        # In an adjacent directory: ../sendrepo-config/config.yaml
+        script_dir = os.path.dirname(os.path.realpath(__file__))
+        adjacent_config_path = os.path.join(script_dir, '..', 'sendrepo-config', 'config.yaml')
+        if os.path.exists(adjacent_config_path):
+            return os.path.normpath(adjacent_config_path)
+
+        # In the same directory as the script
+        script_config_path = os.path.join(script_dir, 'config.yaml')
+        if os.path.exists(script_config_path):
+            return script_config_path
+        
+        return None
 
     def _load_config(self, config_path):
         """Loads the configuration from a YAML file."""
