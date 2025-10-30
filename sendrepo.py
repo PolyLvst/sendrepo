@@ -67,18 +67,37 @@ class SendRepo:
         """Returns a list of project names from the config."""
         return list(self.config.get('projects', {}).keys())
 
-    def _load_global_excludes(self):
-        """Loads global exclude patterns from .sr-ignore-global.txt"""
-        script_dir = os.path.dirname(os.path.realpath(__file__))
-        global_ignore_file = os.path.join(script_dir, '.sr-ignore-global.txt')
+    def _find_global_exclude_file(self):
+        """Finds the global exclude file (.sr-ignore-global.txt) using the same search logic as config"""
+        possible_paths = []
         
-        if os.path.exists(global_ignore_file):
-            with open(global_ignore_file, 'r') as f:
-                lines = f.readlines()
-                # Filter out empty lines and comments
-                excludes = [line.strip() for line in lines if line.strip() and not line.strip().startswith('#')]
-                return excludes
-        return []
+        # Check environment variable path directory
+        env_config_path = os.environ.get('SENDREPO_CONFIG_PATH')
+        if env_config_path:
+            config_dir = os.path.dirname(os.path.abspath(env_config_path))
+            possible_paths.append(os.path.join(config_dir, '.sr-ignore-global.txt'))
+        
+        # Check user config directory
+        if sys.platform == "win32":
+            user_config_dir = os.path.join(os.environ.get('APPDATA', ''), 'sendrepo')
+        else:
+            user_config_dir = os.path.expanduser('~/.config/sendrepo')
+        possible_paths.append(os.path.join(user_config_dir, '.sr-ignore-global.txt'))
+        
+        # Check adjacent config directory
+        script_dir = os.path.dirname(os.path.realpath(__file__))
+        parent_dir = os.path.dirname(script_dir)
+        adjacent_config_dir = os.path.join(parent_dir, 'sendrepo-config')
+        possible_paths.append(os.path.join(adjacent_config_dir, '.sr-ignore-global.txt'))
+        
+        # Check script directory
+        possible_paths.append(os.path.join(script_dir, '.sr-ignore-global.txt'))
+        
+        # Return the first file that exists
+        for path in possible_paths:
+            if os.path.exists(path):
+                return path
+        return None
 
     def sync_config(self):
         """Syncs the configuration file itself based on 'config_sync' settings."""
@@ -127,9 +146,8 @@ class SendRepo:
         port = project.get('port')
         backup_dir = project.get('backup_dir')
 
-        # Add global excludes
-        global_excludes = self._load_global_excludes()
-        exclude_patterns.extend(global_excludes)
+        # Find global exclude file
+        global_exclude_file = self._find_global_exclude_file()
 
         if dry_run:
             print("****** DRY RUN ******")
@@ -167,7 +185,11 @@ class SendRepo:
         if port:
             rsync_cmd.extend(['-e', f'ssh -p {port}'])
 
-        # Add exclude patterns
+        # Add global exclude file if it exists
+        if global_exclude_file:
+            rsync_cmd.extend(['--exclude-from', global_exclude_file])
+
+        # Add project-specific exclude patterns
         for pattern in exclude_patterns:
             rsync_cmd.extend(['--exclude', pattern])
 

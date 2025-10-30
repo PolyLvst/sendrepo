@@ -125,10 +125,48 @@ projects:
 
 SendRepo supports a global exclude file that applies common exclusion patterns to all projects, reducing the need to repeat common excludes like `.git`, `node_modules`, or IDE files in each project configuration.
 
-The global exclude file is named `.sendrepoignore-global.txt` and is searched for in the same locations as the `config.yaml` file (following the same priority order).
+The global exclude file is named `.sr-ignore-global.txt` and is searched for in the same locations as the `config.yaml` file (following the same priority order).
+
+**Example `.sr-ignore-global.txt`:**
+```
+# Global exclusions for SendRepo
+# Git directories
+**.git/
+**.gitignore
+
+# Node.js
+**node_modules/
+**package-lock.json
+**yarn.lock
+
+# Python
+**__pycache__/
+**.pyc
+**venv*/
+**.env
+
+# IDE and Editor files
+**.vscode/
+**.idea/
+**.DS_Store
+
+# Build directories
+**dist/
+**build/
+**target/
+
+# Logs and temporary files
+**logs/
+**.log
+**tmp/
+**temp/
+
+# SendRepo specific
+**.sendrepo/
+```
 
 **How it works:**
-- Global excludes are automatically loaded and applied to all projects
+- Global excludes are automatically loaded and applied to all projects using rsync's `--exclude-from` option
 - They are combined with project-specific excludes defined in `config.yaml`
 - Global excludes use the same pattern syntax as rsync's `--exclude` option
 - Use `**` for recursive directory matching (e.g., `**node_modules/` excludes any `node_modules` directory at any depth)
