@@ -12,6 +12,7 @@ SendRepo is a powerful and flexible Python script that automates the process of 
 -   **Flexible Exclusions**: Easily specify files and directories to exclude from the sync with both project-specific and global exclude patterns.
 -   **Easy Setup**: Includes a helper script to add the tool to your system's PATH for easy access from anywhere.
 -   **Config Sync Hook**: Automatically update your configuration from a Git repository or cloud storage before syncing projects using the `--sync-config` flag.
+-   **Quick Access**: Use `--open` to instantly open the SendRepo directory in your file manager for easy editing of global excludes or git operations.
 
 ## Requirements
 
@@ -191,6 +192,17 @@ Once installed and configured, you can sync your projects from any directory.
     ```bash
     sendrepo.py my-project --dry-run
     ```
+
+-   **Open SendRepo directory:**
+    To easily access the script directory for editing global excludes, updating the script, or performing git operations.
+    ```bash
+    sendrepo.py --open
+    ```
+    This opens the SendRepo directory in your system's file manager, giving you quick access to:
+    - `.sr-ignore-global.txt` - Edit global exclude patterns
+    - `sendrepo.py` - The main script file  
+    - `README.md` - Documentation
+    - `.git/` - Git repository for updates (run `git pull` to update)
 
 ### Creating an Alias (Optional)
 

@@ -136,6 +136,54 @@ class SendRepo:
         process.wait()
         return process.returncode
 
+    def open_sendrepo_folder(self):
+        """Opens the sendrepo script directory in the file explorer."""
+        script_dir = os.path.dirname(os.path.realpath(__file__))
+        
+        print(f"Opening SendRepo directory: {script_dir}")
+        
+        try:
+            if sys.platform == "win32":
+                # Windows - use explorer
+                subprocess.run(['explorer', script_dir], check=True)
+            elif sys.platform == "darwin":
+                # macOS - use Finder
+                subprocess.run(['open', script_dir], check=True)
+            elif sys.platform == "linux":
+                # Linux - try various file managers
+                file_managers = ['xdg-open', 'nautilus', 'dolphin', 'thunar', 'nemo', 'pcmanfm']
+                opened = False
+                
+                for fm in file_managers:
+                    try:
+                        subprocess.run([fm, script_dir], check=True, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+                        opened = True
+                        break
+                    except (subprocess.CalledProcessError, FileNotFoundError):
+                        continue
+                
+                if not opened:
+                    print("Could not find a suitable file manager. Directory path:")
+                    print(f"  {script_dir}")
+                    print("\nFiles in this directory:")
+                    for item in sorted(os.listdir(script_dir)):
+                        if os.path.isdir(os.path.join(script_dir, item)):
+                            print(f"  📁 {item}/")
+                        else:
+                            print(f"  📄 {item}")
+                    return
+            else:
+                print(f"Unsupported platform: {sys.platform}")
+                print(f"SendRepo directory: {script_dir}")
+                return
+            
+        except subprocess.CalledProcessError as e:
+            print(f"Error opening folder: {e}")
+            print(f"SendRepo directory: {script_dir}")
+        except Exception as e:
+            print(f"Unexpected error: {e}")
+            print(f"SendRepo directory: {script_dir}")
+
     def sync_project(self, project_name, dry_run=False):
         """Syncs a single project."""
         project = self.config['projects'][project_name]
@@ -237,21 +285,33 @@ def main():
     # A bit of a chicken-and-egg problem. We create a temporary parser for this one argument.
     temp_parser = argparse.ArgumentParser(add_help=False)
     temp_parser.add_argument('--sync-config', action='store_true')
+    temp_parser.add_argument('--open', action='store_true')
     temp_args, remaining_argv = temp_parser.parse_known_args()
 
     syncer = SendRepo()
+
+    # Handle --open flag (opens sendrepo folder and exits)
+    if temp_args.open:
+        syncer.open_sendrepo_folder()
+        return
 
     if temp_args.sync_config:
         syncer.sync_config()
     
     parser = argparse.ArgumentParser(description="Sync a project to a remote server using rsync (SSH key authentication).")
     parser.add_argument('--sync-config', action='store_true', help="Sync the configuration from its source before running the project sync.")
-    parser.add_argument('project', help="The name of the project to sync.", choices=syncer.projects)
+    parser.add_argument('--open', action='store_true', help="Open the SendRepo directory in file explorer for easy access to global ignore file and git operations.")
+    parser.add_argument('project', nargs='?', help="The name of the project to sync.", choices=syncer.projects)
     parser.add_argument('--dry-run', action='store_true', help="Perform a dry run without making any changes.")
     
     # We parse the *remaining* arguments after pulling out --sync-config, but we need to add it back
     # for the help message to be correct. The actual value has already been handled.
     args = parser.parse_args(remaining_argv)
+
+    # If no project specified and not using --open, show help
+    if not args.project:
+        parser.print_help()
+        return
 
     syncer.sync_project(args.project, args.dry_run)
 
