@@ -219,6 +219,7 @@ class SendRepo:
         rsync_cmd = [
             'rsync',
             '-avz',
+            '--itemize-changes',
             '--delete'
         ]
 
