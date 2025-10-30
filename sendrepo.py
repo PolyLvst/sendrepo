@@ -67,6 +67,19 @@ class SendRepo:
         """Returns a list of project names from the config."""
         return list(self.config.get('projects', {}).keys())
 
+    def _load_global_excludes(self):
+        """Loads global exclude patterns from .sr-ignore-global.txt"""
+        script_dir = os.path.dirname(os.path.realpath(__file__))
+        global_ignore_file = os.path.join(script_dir, '.sr-ignore-global.txt')
+        
+        if os.path.exists(global_ignore_file):
+            with open(global_ignore_file, 'r') as f:
+                lines = f.readlines()
+                # Filter out empty lines and comments
+                excludes = [line.strip() for line in lines if line.strip() and not line.strip().startswith('#')]
+                return excludes
+        return []
+
     def sync_config(self):
         """Syncs the configuration file itself based on 'config_sync' settings."""
         if 'config_sync' not in self.config:
@@ -113,6 +126,10 @@ class SendRepo:
         exclude_patterns = project.get('exclude', [])
         port = project.get('port')
         backup_dir = project.get('backup_dir')
+
+        # Add global excludes
+        global_excludes = self._load_global_excludes()
+        exclude_patterns.extend(global_excludes)
 
         if dry_run:
             print("****** DRY RUN ******")

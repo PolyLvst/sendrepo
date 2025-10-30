@@ -1,0 +1,51 @@
+# ─── Version Control ───────────────────────────────
+**/.git/
+**/.gitignore
+**/.github/
+**/.gitmodules
+
+# ─── Python ────────────────────────────────────────
+**/__pycache__/
+**/*.pyc
+**/*.pyo
+**/*.pyd
+**/*.egg-info/
+**/.env
+**/env/
+**/venv*/
+**/.venv/
+
+# ─── Node / Frontend ───────────────────────────────
+**/node_modules/
+**/npm-debug.log*
+**/yarn*.log
+**/package-lock.json
+**/yarn.lock
+**/dist/          # if you build on the server
+# OR comment that line if you build locally and need dist/
+
+# ─── Build Artifacts ───────────────────────────────
+**/build/
+**/target/
+**/out/
+
+# ─── Logs and Temp Files ───────────────────────────
+**/logs/
+**/*.log
+**/tmp/
+**/temp/
+**/*.tmp
+**/*.temp
+
+# ─── IDE & System Files ────────────────────────────
+**/.vscode/
+**/.idea/
+**/.DS_Store
+**/Thumbs.db
+**/*.swp
+**/*.swo
+**/~$*
+
+# ─── Deployment Tool ───────────────────────────────
+**/.sendrepo/
+**/.rsync-cache/

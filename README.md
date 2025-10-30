@@ -9,8 +9,9 @@ SendRepo is a powerful and flexible Python script that automates the process of 
 -   **Pre-send and Post-send Hooks**: Execute custom shell commands on your local machine before syncing and on the remote server after a successful sync.
 -   **Automated Backups**: Instead of just deleting files on the remote that don't exist locally, `rsync` can automatically back them up to a timestamped directory on the remote server.
 -   **Dry Run Mode**: See what changes would be made without actually modifying any files using the `--dry-run` flag.
--   **Flexible Exclusions**: Easily specify files and directories to exclude from the sync (e.g., `.git`, `node_modules`).
+-   **Flexible Exclusions**: Easily specify files and directories to exclude from the sync with both project-specific and global exclude patterns.
 -   **Easy Setup**: Includes a helper script to add the tool to your system's PATH for easy access from anywhere.
+-   **Config Sync Hook**: Automatically update your configuration from a Git repository or cloud storage before syncing projects using the `--sync-config` flag.
 
 ## Requirements
 
@@ -119,6 +120,18 @@ projects:
         -   `exclude`: A list of files or directories to exclude from the sync.
         -   `pre_send`: (Optional) A shell command to run locally *before* the sync starts. The script will stop if this command fails.
         -   `post_send`: (Optional) A shell command to run *after* a successful sync.
+
+### Global Excludes
+
+SendRepo supports a global exclude file that applies common exclusion patterns to all projects, reducing the need to repeat common excludes like `.git`, `node_modules`, or IDE files in each project configuration.
+
+The global exclude file is named `.sendrepoignore-global.txt` and is searched for in the same locations as the `config.yaml` file (following the same priority order).
+
+**How it works:**
+- Global excludes are automatically loaded and applied to all projects
+- They are combined with project-specific excludes defined in `config.yaml`
+- Global excludes use the same pattern syntax as rsync's `--exclude` option
+- Use `**` for recursive directory matching (e.g., `**node_modules/` excludes any `node_modules` directory at any depth)
 
 ## Usage
 
