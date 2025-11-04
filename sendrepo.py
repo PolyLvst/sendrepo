@@ -184,6 +184,45 @@ class SendRepo:
             print(f"Unexpected error: {e}")
             print(f"SendRepo directory: {script_dir}")
 
+    def run_pre_send(self, project_name):
+        """Manually runs the pre-send command for a project."""
+        if project_name not in self.projects:
+            print(f"Error: Project '{project_name}' not found in config.")
+            return
+
+        project = self.config['projects'][project_name]
+        source_path = project['path']
+
+        if 'pre_send' in project:
+            print(f"Executing pre-send command for project '{project_name}'...")
+            pre_send_cmd = project['pre_send']
+            return_code = self._run_command(pre_send_cmd, cwd=source_path)
+            if return_code == 0:
+                print(f"\nPre-send command completed successfully for '{project_name}'.")
+            else:
+                print(f"\nPre-send command failed with return code: {return_code}")
+        else:
+            print(f"No pre-send command defined for project '{project_name}'.")
+
+    def run_post_send(self, project_name):
+        """Manually runs the post-send command for a project."""
+        if project_name not in self.projects:
+            print(f"Error: Project '{project_name}' not found in config.")
+            return
+
+        project = self.config['projects'][project_name]
+
+        if 'post_send' in project:
+            print(f"Executing post-send command for project '{project_name}'...")
+            post_send_cmd = project['post_send']
+            return_code = self._run_command(post_send_cmd)
+            if return_code == 0:
+                print(f"\nPost-send command completed successfully for '{project_name}'.")
+            else:
+                print(f"\nPost-send command failed with return code: {return_code}")
+        else:
+            print(f"No post-send command defined for project '{project_name}'.")
+
     def sync_project(self, project_name, dry_run=False):
         """Syncs a single project."""
         project = self.config['projects'][project_name]
@@ -282,11 +321,12 @@ class SendRepo:
 def main():
     """Main function to run the sendrepo script."""
     
-    # We need to handle --sync-config before fully parsing to get updated project choices
-    # A bit of a chicken-and-egg problem. We create a temporary parser for this one argument.
+    # We need to handle special arguments before fully parsing
     temp_parser = argparse.ArgumentParser(add_help=False)
     temp_parser.add_argument('--sync-config', action='store_true')
     temp_parser.add_argument('--open', action='store_true')
+    temp_parser.add_argument('--pre-send', dest='pre_send_project', metavar='PROJECT')
+    temp_parser.add_argument('--post-send', dest='post_send_project', metavar='PROJECT')
     temp_args, remaining_argv = temp_parser.parse_known_args()
 
     syncer = SendRepo()
@@ -296,17 +336,28 @@ def main():
         syncer.open_sendrepo_folder()
         return
 
+    # Handle manual pre-send execution
+    if temp_args.pre_send_project:
+        syncer.run_pre_send(temp_args.pre_send_project)
+        return
+        
+    # Handle manual post-send execution
+    if temp_args.post_send_project:
+        syncer.run_post_send(temp_args.post_send_project)
+        return
+
     if temp_args.sync_config:
         syncer.sync_config()
     
     parser = argparse.ArgumentParser(description="Sync a project to a remote server using rsync (SSH key authentication).")
     parser.add_argument('--sync-config', action='store_true', help="Sync the configuration from its source before running the project sync.")
     parser.add_argument('--open', action='store_true', help="Open the SendRepo directory in file explorer for easy access to global ignore file and git operations.")
+    parser.add_argument('--pre-send', metavar='PROJECT', help="Manually run the pre-send command for a specific project.")
+    parser.add_argument('--post-send', metavar='PROJECT', help="Manually run the post-send command for a specific project.")
     parser.add_argument('project', nargs='?', help="The name of the project to sync.", choices=syncer.projects)
     parser.add_argument('--dry-run', action='store_true', help="Perform a dry run without making any changes.")
     
-    # We parse the *remaining* arguments after pulling out --sync-config, but we need to add it back
-    # for the help message to be correct. The actual value has already been handled.
+    # We parse the *remaining* arguments after pulling out special flags
     args = parser.parse_args(remaining_argv)
 
     # If no project specified and not using --open, show help
