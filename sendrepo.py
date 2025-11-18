@@ -128,13 +128,18 @@ class SendRepo:
             print(f"Configuration sync failed with return code: {return_code}")
             sys.exit(1) # Exit if config sync fails
 
-    def _run_command(self, command, cwd=None):
+    def _run_command(self, command, cwd=None, interactive=False):
         """Runs a command and streams its output."""
-        process = subprocess.Popen(command, stdout=subprocess.PIPE, stderr=subprocess.STDOUT, universal_newlines=True, cwd=cwd, shell=isinstance(command, str))
-        for line in process.stdout:
-            print(line, end='')
-        process.wait()
-        return process.returncode
+        if interactive:
+            process = subprocess.Popen(command, cwd=cwd, shell=isinstance(command, str))
+            process.wait()
+            return process.returncode
+        else:
+            process = subprocess.Popen(command, stdout=subprocess.PIPE, stderr=subprocess.STDOUT, universal_newlines=True, cwd=cwd, shell=isinstance(command, str))
+            for line in process.stdout:
+                print(line, end='')
+            process.wait()
+            return process.returncode
 
     def open_sendrepo_folder(self):
         """Opens the sendrepo script directory in the file explorer."""
@@ -196,7 +201,7 @@ class SendRepo:
         if 'pre_send' in project:
             print(f"Executing pre-send command for project '{project_name}'...")
             pre_send_cmd = project['pre_send']
-            return_code = self._run_command(pre_send_cmd, cwd=source_path)
+            return_code = self._run_command(pre_send_cmd, cwd=source_path, interactive=True)
             if return_code == 0:
                 print(f"\nPre-send command completed successfully for '{project_name}'.")
             else:
@@ -215,13 +220,31 @@ class SendRepo:
         if 'post_send' in project:
             print(f"Executing post-send command for project '{project_name}'...")
             post_send_cmd = project['post_send']
-            return_code = self._run_command(post_send_cmd)
+            if sys.platform == "win32":
+                post_send_cmd = ['wsl', 'bash', '-c', post_send_cmd]
+            return_code = self._run_command(post_send_cmd, interactive=True)
             if return_code == 0:
                 print(f"\nPost-send command completed successfully for '{project_name}'.")
             else:
                 print(f"\nPost-send command failed with return code: {return_code}")
         else:
             print(f"No post-send command defined for project '{project_name}'.")
+
+    def _check_wsl_available(self):
+        """Checks if WSL is available and has at least one distribution installed."""
+        try:
+            subprocess.run(['wsl', '--list', '--quiet'], capture_output=True, check=True)
+            return True
+        except (subprocess.CalledProcessError, FileNotFoundError):
+            return False
+
+    def _windows_to_wsl_path(self, path):
+        """Converts a Windows path to a WSL-compatible path."""
+        if sys.platform == "win32" and path and (path[1:3] == ':\\' or path[1:3] == ':/'):
+            drive = path[0].lower()
+            rest = path[3:].replace('\\', '/')
+            return f"/mnt/{drive}/{rest}"
+        return path
 
     def sync_project(self, project_name, dry_run=False):
         """Syncs a single project."""
@@ -249,7 +272,7 @@ class SendRepo:
         if 'pre_send' in project and not dry_run:
             print("Executing pre-send command...")
             pre_send_cmd = project['pre_send']
-            return_code = self._run_command(pre_send_cmd, cwd=source_path)
+            return_code = self._run_command(pre_send_cmd, cwd=source_path, interactive=True)
             if return_code != 0:
                 print(f"\nPre-send command failed with return code: {return_code}")
                 return
@@ -275,18 +298,26 @@ class SendRepo:
 
         # Add global exclude file if it exists
         if global_exclude_file:
-            rsync_cmd.extend(['--exclude-from', global_exclude_file])
+            wsl_exclude_file = self._windows_to_wsl_path(global_exclude_file) if sys.platform == "win32" else global_exclude_file
+            rsync_cmd.extend(['--exclude-from', wsl_exclude_file])
 
         # Add project-specific exclude patterns
         for pattern in exclude_patterns:
             rsync_cmd.extend(['--exclude', pattern])
 
         # Add source and destination
-        rsync_cmd.extend([source_path, remote_path])
+        wsl_source_path = self._windows_to_wsl_path(source_path) if sys.platform == "win32" else source_path
+        rsync_cmd.extend([wsl_source_path, remote_path])
 
         # Platform-specific command execution
         if sys.platform == "win32":
-            # On Windows, use WSL
+            if not self._check_wsl_available():
+                print("Windows Subsystem for Linux (WSL) is not available or no distributions are installed.")
+                print("Please install WSL and a Linux distribution using one of the following methods:")
+                print("1. Use 'wsl.exe --list --online' to list available distributions")
+                print("   and 'wsl.exe --install <Distro>' to install.")
+                print("2. Visit the Microsoft Store: https://aka.ms/wslstore")
+                return
             command = ['wsl'] + rsync_cmd
         elif sys.platform == "linux":
             # On Linux, run directly
@@ -304,7 +335,7 @@ class SendRepo:
             print(f"Backup Dir: {backup_dir}")
         print(f"Executing command: {' '.join(command)}")
 
-        return_code = self._run_command(command)
+        return_code = self._run_command(command, interactive=True)
 
         if return_code == 0:
             print("\nSync completed successfully.")
@@ -312,7 +343,9 @@ class SendRepo:
             if 'post_send' in project and not dry_run:
                 print("Executing post-send command...")
                 post_send_cmd = project['post_send']
-                post_return_code = self._run_command(post_send_cmd)
+                if sys.platform == "win32":
+                    post_send_cmd = ['wsl', 'bash', '-c', post_send_cmd]
+                post_return_code = self._run_command(post_send_cmd, interactive=True)
                 if post_return_code != 0:
                     print(f"\nPost-send command failed with return code: {post_return_code}")
         else:
