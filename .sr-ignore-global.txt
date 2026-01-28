@@ -22,12 +22,6 @@
 **/node_modules/
 **/npm-debug.log*
 **/yarn*.log
-**/package-lock.json
-**/yarn.lock
-**/vite.config.js.timestamp-*
-**/vite.config.ts.timestamp-*
-**/dist/          # if you build on the server
-# OR comment that line if you build locally and need dist/
 
 # ─── Build Artifacts ───────────────────────────────
 **/build/

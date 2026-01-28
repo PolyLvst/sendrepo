@@ -254,6 +254,7 @@ class SendRepo:
         remote_path = project['remote']
         exclude_patterns = project.get('exclude', [])
         port = project.get('port')
+        ssh_jump_host = project.get('ssh_jump_host')
         backup_dir = project.get('backup_dir')
 
         # Find global exclude file
@@ -293,7 +294,13 @@ class SendRepo:
             rsync_cmd.extend(['--backup', f'--backup-dir={backup_dir}'])
 
         # Add ssh port if specified
-        if port:
+        if ssh_jump_host:
+            # Build SSH command with jump host for reverse tunnel
+            ssh_cmd = f'ssh -J {ssh_jump_host}'
+            if port:
+                ssh_cmd += f' -p {port}'
+            rsync_cmd.extend(['-e', ssh_cmd])
+        elif port:
             rsync_cmd.extend(['-e', f'ssh -p {port}'])
 
         # Add global exclude file if it exists
@@ -329,6 +336,8 @@ class SendRepo:
         print(f"Syncing project '{project_name}'...")
         print(f"Source: {source_path}")
         print(f"Remote: {remote_path}")
+        if ssh_jump_host:
+            print(f"SSH Jump Host: {ssh_jump_host}")
         if port:
             print(f"Port: {port}")
         if backup_dir:

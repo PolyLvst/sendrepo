@@ -42,3 +42,24 @@ projects:
     # post_send: |
     #   echo "Restarting service..."
     #   ssh -t user@127.0.0.1 "cd /home/user/another-project && sudo docker compose up --build -d"
+  
+  # Example project using SSH jump host (reverse tunnel)
+  # This uses ProxyJump to tunnel through a bastion host
+  # equivalent to: ssh -J user@remote-ip:22 -p 22 user-behind-nat@localhost
+  remote-project-via-tunnel:
+    path: "{root}/projects/remote-project/"
+    remote: user-behind-nat@localhost:/home/user-behind-nat/remote-project/
+    ssh_jump_host: "user@remote-ip:22"
+    port: 22
+    backup_dir: /home/user-behind-nat/remote-project/.sendrepo/backups/{timestamp}/
+    exclude:
+      - .git
+      - node_modules
+      - __pycache__
+      - .sendrepo
+    pre_send: |
+      echo "Pulling latest changes..."
+      git pull
+    post_send: |
+      echo "Restarting service..."
+      ssh -t -J user@remote-ip:22 -p 22 user-behind-nat@localhost "cd /home/user-behind-nat/remote-project && sudo docker compose up --build -d"
