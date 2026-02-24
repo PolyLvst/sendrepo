@@ -367,6 +367,93 @@ class SendRepo:
         else:
             print(f"\nSync failed with return code: {return_code}")
 
+def check_for_updates(tool_name):
+    """Checks if there are updates available on the remote git repository."""
+    script_dir = os.path.dirname(os.path.realpath(__file__))
+
+    try:
+        # Check if it's a git repo
+        result = subprocess.run(
+            ['git', 'rev-parse', '--git-dir'],
+            cwd=script_dir, capture_output=True, text=True
+        )
+        if result.returncode != 0:
+            print(f"{tool_name} is not installed as a git repository. Cannot check for updates.")
+            return
+
+        # Get current branch
+        result = subprocess.run(
+            ['git', 'rev-parse', '--abbrev-ref', 'HEAD'],
+            cwd=script_dir, capture_output=True, text=True
+        )
+        branch = result.stdout.strip()
+
+        # Get current local commit
+        result = subprocess.run(
+            ['git', 'rev-parse', 'HEAD'],
+            cwd=script_dir, capture_output=True, text=True
+        )
+        local_hash = result.stdout.strip()
+
+        # Fetch latest from remote
+        print(f"Checking for {tool_name} updates...")
+        result = subprocess.run(
+            ['git', 'fetch'],
+            cwd=script_dir, capture_output=True, text=True
+        )
+        if result.returncode != 0:
+            print(f"Failed to fetch updates: {result.stderr.strip()}")
+            return
+
+        # Get remote commit
+        result = subprocess.run(
+            ['git', 'rev-parse', f'origin/{branch}'],
+            cwd=script_dir, capture_output=True, text=True
+        )
+        if result.returncode != 0:
+            print(f"Could not find remote branch 'origin/{branch}'.")
+            return
+        remote_hash = result.stdout.strip()
+
+        if local_hash == remote_hash:
+            print(f"{tool_name} is up to date. ({local_hash[:7]})")
+            return
+
+        # Show commits behind
+        result = subprocess.run(
+            ['git', 'log', '--oneline', f'HEAD..origin/{branch}'],
+            cwd=script_dir, capture_output=True, text=True
+        )
+        commits = result.stdout.strip()
+        commit_count = len(commits.splitlines())
+
+        print(f"\n{tool_name} is {commit_count} commit(s) behind origin/{branch}:\n")
+        print(commits)
+        print()
+
+        # Ask user if they want to update
+        try:
+            answer = input("Do you want to update now? [y/N] ").strip().lower()
+        except (EOFError, KeyboardInterrupt):
+            print()
+            return
+
+        if answer in ('y', 'yes'):
+            result = subprocess.run(
+                ['git', 'pull'],
+                cwd=script_dir, text=True
+            )
+            if result.returncode == 0:
+                print(f"\n{tool_name} updated successfully!")
+            else:
+                print(f"\nUpdate failed. You can manually update by running 'git pull' in {script_dir}")
+        else:
+            print(f"Skipped. You can update later by running 'git pull' in {script_dir}")
+
+    except FileNotFoundError:
+        print("git is not installed or not in PATH. Cannot check for updates.")
+
+
 def main():
     """Main function to run the sendrepo script."""
     
@@ -374,9 +461,15 @@ def main():
     temp_parser = argparse.ArgumentParser(add_help=False)
     temp_parser.add_argument('--sync-config', action='store_true')
     temp_parser.add_argument('--open', action='store_true')
+    temp_parser.add_argument('--check-update', action='store_true')
     temp_parser.add_argument('--pre-send', dest='pre_send_project', metavar='PROJECT')
     temp_parser.add_argument('--post-send', dest='post_send_project', metavar='PROJECT')
     temp_args, remaining_argv = temp_parser.parse_known_args()
+
+    # Handle --check-update before loading config
+    if temp_args.check_update:
+        check_for_updates("SendRepo")
+        return
 
     syncer = SendRepo()
 
@@ -401,6 +494,7 @@ def main():
     parser = argparse.ArgumentParser(description="Sync a project to a remote server using rsync (SSH key authentication).")
     parser.add_argument('--sync-config', action='store_true', help="Sync the configuration from its source before running the project sync.")
     parser.add_argument('--open', action='store_true', help="Open the SendRepo directory in file explorer for easy access to global ignore file and git operations.")
+    parser.add_argument('--check-update', action='store_true', help="Check if a newer version is available on the remote git repository.")
     parser.add_argument('--pre-send', metavar='PROJECT', help="Manually run the pre-send command for a specific project.")
     parser.add_argument('--post-send', metavar='PROJECT', help="Manually run the post-send command for a specific project.")
     parser.add_argument('project', nargs='?', help="The name of the project to sync.", choices=syncer.projects)
