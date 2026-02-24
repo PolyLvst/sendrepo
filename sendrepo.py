@@ -7,14 +7,35 @@ import argparse
 from datetime import datetime
 
 class SendRepo:
+    # ANSI color codes (auto-disabled when not a TTY)
+    _COLORS = {
+        'reset': '\033[0m',
+        'bold': '\033[1m',
+        'dim': '\033[2m',
+        'red': '\033[31m',
+        'green': '\033[32m',
+        'yellow': '\033[33m',
+        'blue': '\033[34m',
+        'cyan': '\033[36m',
+        'gray': '\033[90m',
+    }
+
+    def _c(self, color, text):
+        """Colorize text if stdout is a TTY."""
+        if not hasattr(self, '_use_color'):
+            self._use_color = sys.stdout.isatty()
+        if self._use_color and color in self._COLORS:
+            return f"{self._COLORS[color]}{text}{self._COLORS['reset']}"
+        return str(text)
+
     def __init__(self, config_path=None):
         self.config_path = self._find_config_file(config_path)
         if not self.config_path:
-            print("Error: Could not find config.yaml.")
-            print("Please place it in one of the documented locations")
+            print(f"{self._c('red', '[err]')} Could not find config.yaml")
+            print(f"     -> Place it in one of the documented locations")
             sys.exit(1)
-        
-        print(f"Loading config from: {self.config_path}")
+
+        print(f"{self._c('blue', '[info]')} Config: {self.config_path}")
         self.config = self._load_config(self.config_path)
         self.projects = self._get_project_choices()
 
@@ -102,31 +123,29 @@ class SendRepo:
     def sync_config(self):
         """Syncs the configuration file itself based on 'config_sync' settings."""
         if 'config_sync' not in self.config:
-            print("Warning: --sync-config was passed, but 'config_sync' section is not defined in config.yaml.")
+            print(f"{self._c('yellow', '[warn]')} 'config_sync' section not defined in config.yaml")
             return
 
         sync_settings = self.config['config_sync']
         command = sync_settings.get('command')
-        
+
         if not command:
-            print("Error: 'config_sync' section is missing the 'command' key.")
+            print(f"{self._c('red', '[err]')} 'config_sync' missing 'command' key")
             return
 
         # The working directory should be where the config file is.
         config_dir = os.path.dirname(self.config_path)
 
-        print(f"Syncing configuration using command: '{command}' in '{config_dir}'")
+        print(f"{self._c('blue', '[info]')} Syncing config: '{command}' in '{config_dir}'")
         return_code = self._run_command(command, cwd=config_dir)
 
         if return_code == 0:
-            print("Configuration sync completed successfully.")
-            # Reload config after sync
-            print("Reloading configuration...")
+            print(f"     -> Sync complete, reloading config")
             self.config = self._load_config(self.config_path)
             self.projects = self._get_project_choices()
         else:
-            print(f"Configuration sync failed with return code: {return_code}")
-            sys.exit(1) # Exit if config sync fails
+            print(f"{self._c('red', '[err]')} Config sync failed (exit {return_code})")
+            sys.exit(1)
 
     def _run_command(self, command, cwd=None, interactive=False):
         """Runs a command and streams its output."""
@@ -145,20 +164,17 @@ class SendRepo:
         """Opens the sendrepo script directory in the file explorer."""
         script_dir = os.path.dirname(os.path.realpath(__file__))
         
-        print(f"Opening SendRepo directory: {script_dir}")
-        
+        print(f"{self._c('blue', '[info]')} Opening: {script_dir}")
+
         try:
             if sys.platform == "win32":
-                # Windows - use explorer
                 subprocess.run(['explorer', script_dir], check=True)
             elif sys.platform == "darwin":
-                # macOS - use Finder
                 subprocess.run(['open', script_dir], check=True)
             elif sys.platform == "linux":
-                # Linux - try various file managers
                 file_managers = ['xdg-open', 'nautilus', 'dolphin', 'thunar', 'nemo', 'pcmanfm']
                 opened = False
-                
+
                 for fm in file_managers:
                     try:
                         subprocess.run([fm, script_dir], check=True, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
@@ -166,69 +182,63 @@ class SendRepo:
                         break
                     except (subprocess.CalledProcessError, FileNotFoundError):
                         continue
-                
+
                 if not opened:
-                    print("Could not find a suitable file manager. Directory path:")
-                    print(f"  {script_dir}")
-                    print("\nFiles in this directory:")
-                    for item in sorted(os.listdir(script_dir)):
-                        if os.path.isdir(os.path.join(script_dir, item)):
-                            print(f"  📁 {item}/")
-                        else:
-                            print(f"  📄 {item}")
+                    print(f"{self._c('yellow', '[warn]')} No file manager found")
+                    print(f"     -> {script_dir}")
                     return
             else:
-                print(f"Unsupported platform: {sys.platform}")
-                print(f"SendRepo directory: {script_dir}")
+                print(f"{self._c('yellow', '[warn]')} Unsupported platform: {sys.platform}")
+                print(f"     -> {script_dir}")
                 return
-            
+
         except subprocess.CalledProcessError as e:
-            print(f"Error opening folder: {e}")
-            print(f"SendRepo directory: {script_dir}")
+            print(f"{self._c('red', '[err]')} {e}")
+            print(f"     -> {script_dir}")
         except Exception as e:
-            print(f"Unexpected error: {e}")
-            print(f"SendRepo directory: {script_dir}")
+            print(f"{self._c('red', '[err]')} {e}")
+            print(f"     -> {script_dir}")
 
     def run_pre_send(self, project_name):
         """Manually runs the pre-send command for a project."""
         if project_name not in self.projects:
-            print(f"Error: Project '{project_name}' not found in config.")
+            print(f"{self._c('red', '[err]')} Project '{project_name}' not found")
             return
 
         project = self.config['projects'][project_name]
         source_path = project['path']
 
         if 'pre_send' in project:
-            print(f"Executing pre-send command for project '{project_name}'...")
+            print(f"{self._c('blue', '[info]')} Running pre-send for '{project_name}'...")
             pre_send_cmd = project['pre_send']
             return_code = self._run_command(pre_send_cmd, cwd=source_path, interactive=True)
             if return_code == 0:
-                print(f"\nPre-send command completed successfully for '{project_name}'.")
+                print(f"\n{self._c('green', 'Done:')} pre-send completed for '{project_name}'")
             else:
-                print(f"\nPre-send command failed with return code: {return_code}")
+                print(f"\n{self._c('red', '[err]')} pre-send failed (exit {return_code})")
         else:
-            print(f"No pre-send command defined for project '{project_name}'.")
+            print(f"{self._c('blue', '[info]')} No pre-send command defined for '{project_name}'")
 
     def run_post_send(self, project_name):
         """Manually runs the post-send command for a project."""
         if project_name not in self.projects:
-            print(f"Error: Project '{project_name}' not found in config.")
+            print(f"{self._c('red', '[err]')} Project '{project_name}' not found")
             return
 
         project = self.config['projects'][project_name]
 
         if 'post_send' in project:
-            print(f"Executing post-send command for project '{project_name}'...")
+            print(f"{self._c('blue', '[info]')} Running post-send for '{project_name}'...")
             post_send_cmd = project['post_send']
             if sys.platform == "win32":
                 post_send_cmd = ['wsl', 'bash', '-c', post_send_cmd]
             return_code = self._run_command(post_send_cmd, interactive=True)
             if return_code == 0:
-                print(f"\nPost-send command completed successfully for '{project_name}'.")
+                print(f"\n{self._c('green', 'Done:')} post-send completed for '{project_name}'")
             else:
-                print(f"\nPost-send command failed with return code: {return_code}")
+                print(f"\n{self._c('red', '[err]')} post-send failed (exit {return_code})")
         else:
-            print(f"No post-send command defined for project '{project_name}'.")
+            print(f"{self._c('blue', '[info]')} No post-send command defined for '{project_name}'")
 
     def _check_wsl_available(self):
         """Checks if WSL is available and has at least one distribution installed."""
@@ -261,8 +271,7 @@ class SendRepo:
         global_exclude_file = self._find_global_exclude_file()
 
         if dry_run:
-            print("****** DRY RUN ******")
-            print("No changes will be made.")
+            print(f"{self._c('yellow', '[warn]')} DRY RUN — no changes will be made")
 
         # Format backup_dir with timestamp if placeholder exists
         if backup_dir and '{timestamp}' in backup_dir:
@@ -271,11 +280,11 @@ class SendRepo:
 
         # Handle pre-send commands if any
         if 'pre_send' in project and not dry_run:
-            print("Executing pre-send command...")
+            print(f"{self._c('blue', '[info]')} Running pre-send...")
             pre_send_cmd = project['pre_send']
             return_code = self._run_command(pre_send_cmd, cwd=source_path, interactive=True)
             if return_code != 0:
-                print(f"\nPre-send command failed with return code: {return_code}")
+                print(f"\n{self._c('red', '[err]')} pre-send failed (exit {return_code})")
                 return
 
         # Base rsync command
@@ -305,7 +314,7 @@ class SendRepo:
 
         # Temporarily include .env files if requested
         if include_env:
-            print("WARNING: Including .env files in this sync!")
+            print(f"{self._c('yellow', '[warn]')} Including .env files in this sync!")
             rsync_cmd.extend(['--include', '.env', '--include', '.env.*'])
 
         # Add global exclude file if it exists
@@ -324,48 +333,57 @@ class SendRepo:
         # Platform-specific command execution
         if sys.platform == "win32":
             if not self._check_wsl_available():
-                print("Windows Subsystem for Linux (WSL) is not available or no distributions are installed.")
-                print("Please install WSL and a Linux distribution using one of the following methods:")
-                print("1. Use 'wsl.exe --list --online' to list available distributions")
-                print("   and 'wsl.exe --install <Distro>' to install.")
-                print("2. Visit the Microsoft Store: https://aka.ms/wslstore")
+                print(f"{self._c('red', '[err]')} WSL is not available or no distributions installed")
+                print(f"     -> Run 'wsl.exe --install <Distro>' to install")
+                print(f"     -> Or visit: https://aka.ms/wslstore")
                 return
             command = ['wsl'] + rsync_cmd
         elif sys.platform == "linux":
             # On Linux, run directly
             command = rsync_cmd
         else:
-            print(f"Unsupported platform: {sys.platform}")
+            print(f"{self._c('yellow', '[warn]')} Unsupported platform: {sys.platform}")
             return
 
-        print(f"Syncing project '{project_name}'...")
-        print(f"Source: {source_path}")
-        print(f"Remote: {remote_path}")
+        print(f"\n{self._c('bold', '='*60)}")
+        print(f" {self._c('cyan', '[sync]')} {project_name}")
+        print(f"{self._c('bold', '='*60)}")
+        print(f"     -> Source: {source_path}")
+        print(f"     -> Remote: {remote_path}")
         if ssh_jump_host:
-            print(f"SSH Jump Host: {ssh_jump_host}")
+            print(f"     -> Jump:   {ssh_jump_host}")
         if port:
-            print(f"Port: {port}")
+            print(f"     -> Port:   {port}")
         if backup_dir:
-            print(f"Backup Dir: {backup_dir}")
+            print(f"     -> Backup: {backup_dir}")
         if include_env:
-            print(f"Include .env: YES")
-        print(f"Executing command: {' '.join(command)}")
+            print(f"     -> {self._c('yellow', 'Include .env: YES')}")
+        print(f"     -> {self._c('dim', ' '.join(command))}")
 
         return_code = self._run_command(command, interactive=True)
 
         if return_code == 0:
-            print("\nSync completed successfully.")
+            print(f"\n{self._c('green', 'Done:')} sync completed for '{project_name}'")
             # Handle post-send commands if any
             if 'post_send' in project and not dry_run:
-                print("Executing post-send command...")
+                print(f"{self._c('blue', '[info]')} Running post-send...")
                 post_send_cmd = project['post_send']
                 if sys.platform == "win32":
                     post_send_cmd = ['wsl', 'bash', '-c', post_send_cmd]
                 post_return_code = self._run_command(post_send_cmd, interactive=True)
                 if post_return_code != 0:
-                    print(f"\nPost-send command failed with return code: {post_return_code}")
+                    print(f"\n{self._c('red', '[err]')} post-send failed (exit {post_return_code})")
         else:
-            print(f"\nSync failed with return code: {return_code}")
+            print(f"\n{self._c('red', '[err]')} Sync failed (exit {return_code})")
+
+def _color(color, text):
+    """Colorize text if stdout is a TTY."""
+    codes = {'reset': '\033[0m', 'bold': '\033[1m', 'red': '\033[31m', 'green': '\033[32m',
+             'yellow': '\033[33m', 'blue': '\033[34m', 'cyan': '\033[36m', 'gray': '\033[90m'}
+    if sys.stdout.isatty() and color in codes:
+        return f"{codes[color]}{text}{codes['reset']}"
+    return str(text)
+
 
 def check_for_updates(tool_name):
     """Checks if there are updates available on the remote git repository."""
@@ -378,7 +396,7 @@ def check_for_updates(tool_name):
             cwd=script_dir, capture_output=True, text=True
         )
         if result.returncode != 0:
-            print(f"{tool_name} is not installed as a git repository. Cannot check for updates.")
+            print(f"{_color('yellow', '[warn]')} Not a git repo, can't check for updates")
             return
 
         # Get current branch
@@ -396,13 +414,13 @@ def check_for_updates(tool_name):
         local_hash = result.stdout.strip()
 
         # Fetch latest from remote
-        print(f"Checking for {tool_name} updates...")
+        print(f"{_color('blue', '[info]')} Checking for updates...")
         result = subprocess.run(
             ['git', 'fetch'],
             cwd=script_dir, capture_output=True, text=True
         )
         if result.returncode != 0:
-            print(f"Failed to fetch updates: {result.stderr.strip()}")
+            print(f"{_color('red', '[err]')} Fetch failed: {result.stderr.strip()}")
             return
 
         # Get remote commit
@@ -411,12 +429,12 @@ def check_for_updates(tool_name):
             cwd=script_dir, capture_output=True, text=True
         )
         if result.returncode != 0:
-            print(f"Could not find remote branch 'origin/{branch}'.")
+            print(f"{_color('yellow', '[warn]')} Remote branch 'origin/{branch}' not found")
             return
         remote_hash = result.stdout.strip()
 
         if local_hash == remote_hash:
-            print(f"{tool_name} is up to date. ({local_hash[:7]})")
+            print(f"{_color('blue', '[info]')} Up to date ({local_hash[:7]})")
             return
 
         # Show commits behind
@@ -427,7 +445,7 @@ def check_for_updates(tool_name):
         commits = result.stdout.strip()
         commit_count = len(commits.splitlines())
 
-        print(f"\n{tool_name} is {commit_count} commit(s) behind origin/{branch}:\n")
+        print(f"{_color('blue', '[info]')} {commit_count} commit(s) behind origin/{branch}:")
         print(commits)
         print()
 
@@ -444,14 +462,14 @@ def check_for_updates(tool_name):
                 cwd=script_dir, text=True
             )
             if result.returncode == 0:
-                print(f"\n{tool_name} updated successfully!")
+                print(f"{_color('green', '[info]')} Updated successfully!")
             else:
-                print(f"\nUpdate failed. You can manually update by running 'git pull' in {script_dir}")
+                print(f"{_color('red', '[err]')} Update failed. Run 'git pull' in {script_dir}")
         else:
-            print(f"Skipped. You can update later by running 'git pull' in {script_dir}")
+            print(f"{_color('blue', '[info]')} Skipped. Run 'git pull' in {script_dir} to update later")
 
     except FileNotFoundError:
-        print("git is not installed or not in PATH. Cannot check for updates.")
+        print(f"{_color('red', '[err]')} git not found in PATH")
 
 
 def main():
