@@ -256,7 +256,7 @@ class SendRepo:
             return f"/mnt/{drive}/{rest}"
         return path
 
-    def sync_project(self, project_name, dry_run=False, include_env=False):
+    def sync_project(self, project_name, dry_run=False, include_env=False, checksum=False):
         """Syncs a single project."""
         project = self.config['projects'][project_name]
 
@@ -297,6 +297,10 @@ class SendRepo:
 
         if dry_run:
             rsync_cmd.append('--dry-run')
+
+        if checksum:
+            print(f"{self._c('yellow', '[warn]')} Checksum mode — comparing by content, not timestamps")
+            rsync_cmd.append('--checksum')
 
         # Add backup directory if specified
         if backup_dir:
@@ -518,6 +522,7 @@ def main():
     parser.add_argument('project', nargs='?', help="The name of the project to sync.", choices=syncer.projects)
     parser.add_argument('--dry-run', action='store_true', help="Perform a dry run without making any changes.")
     parser.add_argument('--include-env', action='store_true', help="Temporarily include .env files in the sync.")
+    parser.add_argument('-c', '--checksum', action='store_true', help="Compare files by checksum instead of mod-time & size. Useful when syncing from a different machine.")
     
     # We parse the *remaining* arguments after pulling out special flags
     args = parser.parse_args(remaining_argv)
@@ -527,7 +532,7 @@ def main():
         parser.print_help()
         return
 
-    syncer.sync_project(args.project, args.dry_run, args.include_env)
+    syncer.sync_project(args.project, args.dry_run, args.include_env, args.checksum)
 
 if __name__ == '__main__':
     main()
