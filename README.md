@@ -10,6 +10,7 @@ SendRepo is a powerful and flexible Python script that automates the process of 
 -   **Automated Backups**: Instead of just deleting files on the remote that don't exist locally, `rsync` can automatically back them up to a timestamped directory on the remote server.
 -   **Dry Run Mode**: See what changes would be made without actually modifying any files using the `--dry-run` flag.
 -   **Flexible Exclusions**: Easily specify files and directories to exclude from the sync with both project-specific and global exclude patterns.
+-   **Partial Sync**: Send only specific files or folders with `--only` for quick one-off pushes (e.g. a single favicon) without disturbing the rest of the remote.
 -   **Easy Setup**: Includes a helper script to add the tool to your system's PATH for easy access from anywhere.
 -   **Config Sync Hook**: Automatically update your configuration from a Git repository or cloud storage before syncing projects using the `--sync-config` flag.
 -   **Quick Access**: Use `--open` to instantly open the SendRepo directory in your file manager for easy editing of global excludes or git operations.
@@ -192,6 +193,18 @@ Once installed and configured, you can sync your projects from any directory.
     ```bash
     sendrepo.py my-project --dry-run
     ```
+
+-   **Send only specific files or folders (partial sync):**
+    For one-off pushes (e.g. just a favicon) use `--only` / `-o` with one or more paths *relative to the project root*. The paths keep their directory structure on the remote.
+    ```bash
+    sendrepo.py my-project --only static/favicon.ico
+    sendrepo.py my-project -o static/favicon.ico assets/logo.png
+    sendrepo.py my-project -o public/        # whole subdirectory
+    ```
+    In partial mode:
+    -   `--delete` is **disabled**, so the rest of the remote is left untouched.
+    -   `pre_send` and `post_send` hooks are **skipped by default**. Pass `--with-hooks` if you want them to run (e.g. when you need a post-send service restart).
+    -   `--dry-run`, `--checksum`, `--include-env`, project excludes, and global excludes all still apply.
 
 -   **Open SendRepo directory:**
     To easily access the script directory for editing global excludes, updating the script, or performing git operations.

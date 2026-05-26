@@ -256,7 +256,7 @@ class SendRepo:
             return f"/mnt/{drive}/{rest}"
         return path
 
-    def sync_project(self, project_name, dry_run=False, include_env=False, checksum=False):
+    def sync_project(self, project_name, dry_run=False, include_env=False, checksum=False, only=None, with_hooks=False):
         """Syncs a single project."""
         project = self.config['projects'][project_name]
 
@@ -267,11 +267,36 @@ class SendRepo:
         ssh_jump_host = project.get('ssh_jump_host')
         backup_dir = project.get('backup_dir')
 
+        # Partial sync mode: validate the --only paths up front
+        partial = bool(only)
+        only_relpaths = []
+        if partial:
+            for p in only:
+                if os.path.isabs(p):
+                    print(f"{self._c('red', '[err]')} --only paths must be relative to the project root: '{p}'")
+                    return
+                norm = os.path.normpath(p)
+                if norm == '.' or norm.startswith('..') or os.sep + '..' + os.sep in os.sep + norm + os.sep:
+                    print(f"{self._c('red', '[err]')} --only path escapes the project root: '{p}'")
+                    return
+                full = os.path.join(source_path, norm)
+                if not os.path.exists(full):
+                    print(f"{self._c('red', '[err]')} --only path not found locally: '{full}'")
+                    return
+                only_relpaths.append(norm.replace(os.sep, '/'))
+
+        # Hooks: skipped on partial sync unless --with-hooks is set
+        run_hooks = (not partial) or with_hooks
+
         # Find global exclude file
         global_exclude_file = self._find_global_exclude_file()
 
         if dry_run:
             print(f"{self._c('yellow', '[warn]')} DRY RUN — no changes will be made")
+        if partial:
+            print(f"{self._c('yellow', '[warn]')} Partial sync — --delete disabled, only the listed paths will be sent")
+            if not with_hooks and ('pre_send' in project or 'post_send' in project):
+                print(f"     -> Hooks skipped (use --with-hooks to run them)")
 
         # Format backup_dir with timestamp if placeholder exists
         if backup_dir and '{timestamp}' in backup_dir:
@@ -279,7 +304,7 @@ class SendRepo:
             backup_dir = backup_dir.format(timestamp=timestamp)
 
         # Handle pre-send commands if any
-        if 'pre_send' in project and not dry_run:
+        if 'pre_send' in project and not dry_run and run_hooks:
             print(f"{self._c('blue', '[info]')} Running pre-send...")
             pre_send_cmd = project['pre_send']
             return_code = self._run_command(pre_send_cmd, cwd=source_path, interactive=True)
@@ -292,8 +317,10 @@ class SendRepo:
             'rsync',
             '-avz',
             '--itemize-changes',
-            '--delete'
         ]
+        # --delete is unsafe for partial sends: it would wipe everything outside the listed paths
+        if not partial:
+            rsync_cmd.append('--delete')
 
         if dry_run:
             rsync_cmd.append('--dry-run')
@@ -330,9 +357,19 @@ class SendRepo:
         for pattern in exclude_patterns:
             rsync_cmd.extend(['--exclude', pattern])
 
-        # Add source and destination
-        wsl_source_path = self._windows_to_wsl_path(source_path) if sys.platform == "win32" else source_path
-        rsync_cmd.extend([wsl_source_path, remote_path])
+        # Add source(s) and destination
+        if partial:
+            # Use --relative with a /./ marker so each listed path keeps its
+            # subdirectory structure on the remote, anchored at the project root.
+            rsync_cmd.append('--relative')
+            sp = source_path.rstrip('/').rstrip('\\')
+            wsl_sp = self._windows_to_wsl_path(sp) if sys.platform == "win32" else sp
+            for rel in only_relpaths:
+                rsync_cmd.append(f"{wsl_sp}/./{rel}")
+            rsync_cmd.append(remote_path)
+        else:
+            wsl_source_path = self._windows_to_wsl_path(source_path) if sys.platform == "win32" else source_path
+            rsync_cmd.extend([wsl_source_path, remote_path])
 
         # Platform-specific command execution
         if sys.platform == "win32":
@@ -350,10 +387,15 @@ class SendRepo:
             return
 
         print(f"\n{self._c('bold', '='*60)}")
-        print(f" {self._c('cyan', '[sync]')} {project_name}")
+        label = '[sync:partial]' if partial else '[sync]'
+        print(f" {self._c('cyan', label)} {project_name}")
         print(f"{self._c('bold', '='*60)}")
         print(f"     -> Source: {source_path}")
         print(f"     -> Remote: {remote_path}")
+        if partial:
+            print(f"     -> {self._c('yellow', 'Only:')}")
+            for rel in only_relpaths:
+                print(f"         {rel}")
         if ssh_jump_host:
             print(f"     -> Jump:   {ssh_jump_host}")
         if port:
@@ -369,7 +411,7 @@ class SendRepo:
         if return_code == 0:
             print(f"\n{self._c('green', 'Done:')} sync completed for '{project_name}'")
             # Handle post-send commands if any
-            if 'post_send' in project and not dry_run:
+            if 'post_send' in project and not dry_run and run_hooks:
                 print(f"{self._c('blue', '[info]')} Running post-send...")
                 post_send_cmd = project['post_send']
                 if sys.platform == "win32":
@@ -523,7 +565,9 @@ def main():
     parser.add_argument('--dry-run', action='store_true', help="Perform a dry run without making any changes.")
     parser.add_argument('--include-env', action='store_true', help="Temporarily include .env files in the sync.")
     parser.add_argument('-c', '--checksum', action='store_true', help="Compare files by checksum instead of mod-time & size. Useful when syncing from a different machine.")
-    
+    parser.add_argument('-o', '--only', nargs='+', metavar='PATH', help="Send only the listed paths (relative to the project root) instead of the whole project. Disables --delete; skips pre/post-send hooks unless --with-hooks is also given.")
+    parser.add_argument('--with-hooks', action='store_true', help="With --only, run pre_send / post_send hooks (they are skipped by default on partial sends).")
+
     # We parse the *remaining* arguments after pulling out special flags
     args = parser.parse_args(remaining_argv)
 
@@ -532,7 +576,7 @@ def main():
         parser.print_help()
         return
 
-    syncer.sync_project(args.project, args.dry_run, args.include_env, args.checksum)
+    syncer.sync_project(args.project, args.dry_run, args.include_env, args.checksum, only=args.only, with_hooks=args.with_hooks)
 
 if __name__ == '__main__':
     main()
