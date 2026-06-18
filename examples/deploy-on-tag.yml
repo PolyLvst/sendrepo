@@ -1,0 +1,14 @@
+# This live at project repo .github/workflows/deploy.yml or your filename choosing
+name: Deploy
+
+on:
+  push:
+    tags:
+      - 'v*'        # deploys when you push a tag like v1.0.0 (change pattern if needed)
+
+jobs:
+  deploy:
+    runs-on: [self-hosted, sendrepo]
+    steps:
+      - uses: actions/checkout@v4
+      - run: sr project-name      # ← change to this repo's project name
