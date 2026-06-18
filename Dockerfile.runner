@@ -1,0 +1,26 @@
+# GitHub self-hosted Actions runner (official base) with SendRepo preinstalled.
+#
+# Lets workflows deploy with rsync over SSH, e.g.:
+#   - run: sr my-project
+#
+# Build via docker-compose (see docker-compose.yml) or directly:
+#   docker build -f Dockerfile.runner -t sendrepo-runner .
+FROM ghcr.io/actions/actions-runner:latest
+
+# Install rsync + ssh client (what sendrepo shells out to) and PyYAML.
+# Needs root; the base image runs as the unprivileged `runner` user by default.
+USER root
+COPY . /tmp/sendrepo
+RUN cd /tmp/sendrepo && ./install.sh && rm -rf /tmp/sendrepo
+
+# Registration entrypoint: the official image does NOT auto-register a runner,
+# so we add a small script that configures + runs it (and de-registers on exit).
+COPY runner-entrypoint.sh /usr/local/bin/runner-entrypoint.sh
+RUN chmod +x /usr/local/bin/runner-entrypoint.sh
+
+# Drop back to the unprivileged runner user the jobs execute as.
+USER runner
+
+# install.sh put `sendrepo` and `sr` in /usr/local/bin (already on PATH),
+# so workflow steps can call them directly.
+ENTRYPOINT ["/usr/local/bin/runner-entrypoint.sh"]

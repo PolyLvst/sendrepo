@@ -12,6 +12,7 @@ SendRepo is a powerful and flexible Python script that automates the process of 
 -   **Flexible Exclusions**: Easily specify files and directories to exclude from the sync with both project-specific and global exclude patterns.
 -   **Partial Sync**: Send only specific files or folders with `--only` for quick one-off pushes (e.g. a single favicon) without disturbing the rest of the remote.
 -   **Easy Setup**: Includes a helper script to add the tool to your system's PATH for easy access from anywhere.
+-   **Container-Friendly**: A POSIX `install.sh` installs SendRepo and its dependencies into Docker images, plus a ready-made GitHub Actions self-hosted runner for rsync-over-SSH deploys.
 -   **Config Sync Hook**: Automatically update your configuration from a Git repository or cloud storage before syncing projects using the `--sync-config` flag.
 -   **Quick Access**: Use `--open` to instantly open the SendRepo directory in your file manager for easy editing of global excludes or git operations.
 
@@ -46,6 +47,78 @@ SendRepo is a powerful and flexible Python script that automates the process of 
     python setup_path.py
     ```
     After running, **restart your terminal** or run `source ~/.bashrc` (or `~/.zshrc`) for the changes to take effect.
+
+## Docker / Container Install
+
+For containers (or any Linux host), use `install.sh` instead of `setup_path.py`. It
+installs the system dependencies (`python3`, `rsync`, `openssh-client`) and PyYAML,
+then places the `sendrepo` and `sr` commands on `PATH` (`/usr/local/bin`) — which works
+in a non-login container shell, unlike editing `~/.bashrc`.
+
+```bash
+./install.sh                 # install to /usr/local
+PREFIX=/opt ./install.sh     # custom prefix
+SKIP_PKGS=1 ./install.sh     # skip the system package manager
+```
+
+It auto-detects the package manager (apt / apk / dnf / yum) and uses `sudo` only when
+not already root.
+
+**In a Dockerfile:**
+```dockerfile
+FROM python:3.12-slim
+COPY . /tmp/sendrepo
+RUN cd /tmp/sendrepo && ./install.sh && rm -rf /tmp/sendrepo
+```
+
+At runtime, mount your config and an SSH key so rsync can reach your servers:
+```bash
+docker run --rm -it \
+  -v "$PWD/config.yaml:/root/.config/sendrepo/config.yaml:ro" \
+  -v "$HOME/.ssh:/root/.ssh:ro" \
+  your-image sr my-project
+```
+
+## GitHub Actions Self-Hosted Runner
+
+`Dockerfile.runner` and `docker-compose.yaml` build a GitHub self-hosted Actions runner
+with SendRepo preinstalled, so workflows can deploy with a single `sr <project>` step.
+It is built on the official `ghcr.io/actions/actions-runner` image (lean — no bundled
+Docker-in-Docker), with `runner-entrypoint.sh` handling runner registration and clean
+de-registration on shutdown.
+
+**Setup:**
+
+1.  Put your sendrepo `config.yaml` at `./config.yaml` (next to the compose file).
+2.  Put the deploy SSH key + `known_hosts` in `./ssh/` (copied into the runner with
+    correct `600`/`700` perms at startup).
+3.  Create a `.env` file:
+    ```bash
+    REPO_URL=https://github.com/your-org/your-repo
+    ACCESS_TOKEN=ghp_xxx          # PAT with admin scope (auto-fetches a registration token)
+    # --- or instead of ACCESS_TOKEN, a short-lived registration token: ---
+    # RUNNER_TOKEN=AXXXXXXXXXXXXXXXXXXXXXXXXX
+    RUNNER_NAME=sendrepo-runner
+    RUNNER_LABELS=self-hosted,sendrepo
+    ```
+4.  Bring it up:
+    ```bash
+    docker compose up -d --build
+    ```
+
+**Use it in a workflow:**
+```yaml
+jobs:
+  deploy:
+    runs-on: [self-hosted, sendrepo]
+    steps:
+      - run: sr my-project
+```
+
+> **Security:** `config.yaml`, `.env`, and your `ssh/` keys are secrets — keep them out
+> of version control (add them to `.gitignore`). The runner de-registers on shutdown; a
+> PAT-derived removal token can expire on long-lived containers, so if cleanup fails you
+> may need to prune a stale runner in the GitHub UI.
 
 ## Configuration
 
@@ -129,49 +202,46 @@ SendRepo supports a global exclude file that applies common exclusion patterns t
 
 The global exclude file is named `.sr-ignore-global.txt` and is searched for in the same locations as the `config.yaml` file (following the same priority order).
 
-**Example `.sr-ignore-global.txt`:**
+The repository ships with a sensible default `.sr-ignore-global.txt` covering version
+control, env files, **secrets/credentials** (`.ssh/`, `*.pem`, `*.key`, `id_rsa*`),
+Python, Node, build artifacts, logs, IDE files, and SendRepo's own working directories.
+An excerpt:
+
 ```
-# Global exclusions for SendRepo
-# Git directories
-**.git/
-**.gitignore
+# ─── Env Files ─────────────────────────────────────
+**/.env
+**/.env.*
+**/env/
 
-# Node.js
-**node_modules/
-**package-lock.json
-**yarn.lock
+# ─── Secrets / Credentials ─────────────────────────
+**/.ssh/
+**/*.pem
+**/*.key
+**/id_rsa
+**/id_rsa.*
 
-# Python
-**__pycache__/
-**.pyc
-**venv*/
-**.env
+# ─── Python ────────────────────────────────────────
+**/__pycache__/
+**/*.pyc
+**/venv*/
 
-# IDE and Editor files
-**.vscode/
-**.idea/
-**.DS_Store
+# ─── Node / Frontend ───────────────────────────────
+**/node_modules/
 
-# Build directories
-**dist/
-**build/
-**target/
-
-# Logs and temporary files
-**logs/
-**.log
-**tmp/
-**temp/
-
-# SendRepo specific
-**.sendrepo/
+# ─── Deployment Tool ───────────────────────────────
+**/.sendrepo/
 ```
 
 **How it works:**
 - Global excludes are automatically loaded and applied to all projects using rsync's `--exclude-from` option
 - They are combined with project-specific excludes defined in `config.yaml`
 - Global excludes use the same pattern syntax as rsync's `--exclude` option
-- Use `**` for recursive directory matching (e.g., `**node_modules/` excludes any `node_modules` directory at any depth)
+- Use `**/` for recursive matching at any depth (e.g., `**/node_modules/` excludes any `node_modules` directory anywhere in the tree)
+
+The secrets patterns are especially useful if you ever sync SendRepo onto another host
+(e.g. to bootstrap a new VPS) — they keep keys and credentials from being shipped to the
+remote. Note that `config.yaml` is **not** globally excluded, so if it lives inside a
+project you sync, add it to that project's `exclude` list.
 
 ## Usage
 

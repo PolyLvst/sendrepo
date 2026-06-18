@@ -1,0 +1,40 @@
+# Self-hosted GitHub Actions runner with SendRepo, for rsync-over-SSH deploys.
+#
+#   1. Put your sendrepo config at ./config.yaml   (see config-example.yaml)
+#   2. Put the deploy SSH key + known_hosts in ./ssh/
+#   3. Set REPO_URL and an auth token in a .env file (see below)
+#   4. docker compose up -d --build
+#
+# Variables come from a .env file next to this compose file.
+# See .env.example.runner for a documented template to copy.
+
+services:
+  runner:
+    build:
+      context: .
+      dockerfile: Dockerfile.runner
+    image: sendrepo-runner
+    restart: unless-stopped
+    environment:
+      # Repo (or org) the runner attaches to, e.g. https://github.com/org/repo
+      REPO_URL: ${REPO_URL}
+      # AUTH — provide ONE of the two below:
+      #
+      # ACCESS_TOKEN = your long-lived Personal Access Token (PAT, admin scope).
+      #   PREFERRED. On every container start the entrypoint uses it to fetch a
+      #   FRESH registration token from the GitHub API, so restarts always work.
+      ACCESS_TOKEN: ${ACCESS_TOKEN:-}
+      # RUNNER_TOKEN = a short-lived registration token from the GitHub UI.
+      #   Expires in ~1 hour — if the container restarts after that, registration
+      #   FAILS. Only use this for a quick throwaway runner.
+      RUNNER_TOKEN: ${RUNNER_TOKEN:-}
+      # Name shown in GitHub's runner list (defaults to the container hostname).
+      RUNNER_NAME: ${RUNNER_NAME:-sendrepo-runner}
+      # Labels your workflow targets via `runs-on: [self-hosted, sendrepo]`.
+      RUNNER_LABELS: ${RUNNER_LABELS:-self-hosted,sendrepo}
+    volumes:
+      # SSH key + known_hosts so rsync can reach your servers.
+      # Copied to ~/.ssh with correct perms by the entrypoint (read-only here).
+      - ./ssh:/ssh-keys:ro
+      # SendRepo config — mounted where sendrepo looks first (~/.config/sendrepo).
+      - ./config.yaml:/home/runner/.config/sendrepo/config.yaml:ro
