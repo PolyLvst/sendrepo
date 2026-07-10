@@ -277,6 +277,13 @@ Once installed and configured, you can sync your projects from any directory.
     -   `pre_send` and `post_send` hooks are **skipped by default**. Pass `--with-hooks` if you want them to run (e.g. when you need a post-send service restart).
     -   `--dry-run`, `--checksum`, `--include-env`, project excludes, and global excludes all still apply.
 
+-   **Skip a hook for one run:**
+    Use `--skip-pre-send` or `--skip-post-send` to bypass a single hook without editing the config. Handy when, e.g., you just want to push files without triggering a remote rebuild/restart.
+    ```bash
+    sendrepo.py my-project --skip-post-send   # sync, but don't restart the service
+    sendrepo.py my-project --skip-pre-send    # sync, but skip the local build step
+    ```
+
 -   **Open SendRepo directory:**
     To easily access the script directory for editing global excludes, updating the script, or performing git operations.
     ```bash

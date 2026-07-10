@@ -256,7 +256,7 @@ class SendRepo:
             return f"/mnt/{drive}/{rest}"
         return path
 
-    def sync_project(self, project_name, dry_run=False, include_env=False, checksum=False, only=None, with_hooks=False):
+    def sync_project(self, project_name, dry_run=False, include_env=False, checksum=False, only=None, with_hooks=False, skip_pre_send=False, skip_post_send=False):
         """Syncs a single project."""
         project = self.config['projects'][project_name]
 
@@ -305,7 +305,9 @@ class SendRepo:
             backup_dir = backup_dir.format(timestamp=timestamp)
 
         # Handle pre-send commands if any
-        if 'pre_send' in project and not dry_run and run_hooks:
+        if 'pre_send' in project and skip_pre_send:
+            print(f"{self._c('yellow', '[warn]')} Skipping pre-send (--skip-pre-send)")
+        if 'pre_send' in project and not dry_run and run_hooks and not skip_pre_send:
             print(f"{self._c('blue', '[info]')} Running pre-send...")
             pre_send_cmd = project['pre_send']
             return_code = self._run_command(pre_send_cmd, cwd=source_path, interactive=True)
@@ -420,7 +422,9 @@ class SendRepo:
         if return_code == 0:
             print(f"\n{self._c('green', 'Done:')} sync completed for '{project_name}'")
             # Handle post-send commands if any
-            if 'post_send' in project and not dry_run and run_hooks:
+            if 'post_send' in project and skip_post_send:
+                print(f"{self._c('yellow', '[warn]')} Skipping post-send (--skip-post-send)")
+            if 'post_send' in project and not dry_run and run_hooks and not skip_post_send:
                 print(f"{self._c('blue', '[info]')} Running post-send...")
                 post_send_cmd = project['post_send']
                 if sys.platform == "win32":
@@ -576,6 +580,8 @@ def main():
     parser.add_argument('-c', '--checksum', action='store_true', help="Compare files by checksum instead of mod-time & size. Useful when syncing from a different machine.")
     parser.add_argument('-o', '--only', nargs='+', metavar='PATH', help="Send only the listed paths (relative to the project root) instead of the whole project. Disables --delete; skips pre/post-send hooks unless --with-hooks is also given.")
     parser.add_argument('--with-hooks', action='store_true', help="With --only, run pre_send / post_send hooks (they are skipped by default on partial sends).")
+    parser.add_argument('--skip-pre-send', action='store_true', help="Skip the pre_send hook for this run.")
+    parser.add_argument('--skip-post-send', action='store_true', help="Skip the post_send hook for this run.")
 
     # We parse the *remaining* arguments after pulling out special flags
     args = parser.parse_args(remaining_argv)
@@ -585,7 +591,7 @@ def main():
         parser.print_help()
         return
 
-    syncer.sync_project(args.project, args.dry_run, args.include_env, args.checksum, only=args.only, with_hooks=args.with_hooks)
+    syncer.sync_project(args.project, args.dry_run, args.include_env, args.checksum, only=args.only, with_hooks=args.with_hooks, skip_pre_send=args.skip_pre_send, skip_post_send=args.skip_post_send)
 
 if __name__ == '__main__':
     main()
