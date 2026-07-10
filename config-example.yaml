@@ -19,13 +19,20 @@ projects:
       - node_modules
       - __pycache__
       - .sendrepo
+    # 'include' re-includes files that a broader exclude would otherwise drop.
+    # The global ignore file excludes **/*.key, so to push a specific cert
+    # (e.g. mTLS material for a home server) list it here. Includes are applied
+    # before all excludes (rsync first-match-wins). A bare filename matches at
+    # any depth; use a path like certs/home-ca.key to anchor it.
+    # include:
+    #   - home-ca.key
     # pre_send: |
     #   echo "Pulling latest changes..."
     #   git pull
     # post_send: |
     #   echo "Restarting service..."
     #   ssh -t user@127.0.0.1 "cd /home/user/your-project && sudo docker compose up --build -d"
-  
+
   another-project:
     path: "{root}/projects/another-project/"
     remote: user@127.0.0.1:/home/user/another-project/

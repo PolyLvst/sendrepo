@@ -263,6 +263,7 @@ class SendRepo:
         source_path = project['path']
         remote_path = project['remote']
         exclude_patterns = project.get('exclude', [])
+        include_patterns = project.get('include', [])
         port = project.get('port')
         ssh_jump_host = project.get('ssh_jump_host')
         backup_dir = project.get('backup_dir')
@@ -348,6 +349,12 @@ class SendRepo:
             print(f"{self._c('yellow', '[warn]')} Including .env files in this sync!")
             rsync_cmd.extend(['--include', '.env', '--include', '.env.*'])
 
+        # Project-specific include patterns (re-include files that a later
+        # exclude would otherwise drop). rsync uses first-match-wins, so these
+        # MUST be added before the global exclude file and project excludes.
+        for pattern in include_patterns:
+            rsync_cmd.extend(['--include', pattern])
+
         # Add global exclude file if it exists
         if global_exclude_file:
             wsl_exclude_file = self._windows_to_wsl_path(global_exclude_file) if sys.platform == "win32" else global_exclude_file
@@ -404,6 +411,8 @@ class SendRepo:
             print(f"     -> Backup: {backup_dir}")
         if include_env:
             print(f"     -> {self._c('yellow', 'Include .env: YES')}")
+        if include_patterns:
+            print(f"     -> {self._c('green', 'Include:')} {', '.join(include_patterns)}")
         print(f"     -> {self._c('dim', ' '.join(command))}")
 
         return_code = self._run_command(command, interactive=True)
