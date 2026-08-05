@@ -1,0 +1,51 @@
+#!/usr/bin/env sh
+#
+# Run SendRepo from the container image, against the current directory.
+#
+#   ./sr-docker my-project             # send $PWD as 'my-project'
+#   ./sr-docker my-project --dry-run
+#   ./sr-docker my-project -o web/src  # partial send
+#
+# Drop this on your PATH (e.g. ~/.local/bin/sr) and it behaves like a local
+# install — no Python, PyYAML or rsync needed on the host, only Docker.
+#
+# Override any of these with env vars:
+#   SENDREPO_IMAGE       image to run          (default sendrepo-cli:latest)
+#   SENDREPO_CONFIG_DIR  dir with config.yaml  (default ~/.config/sendrepo)
+#   SENDREPO_SSH_DIR     dir with the ssh key  (default ~/.ssh)
+#   SENDREPO_WORKSPACE   project to send       (default the current directory)
+#   SENDREPO_DOCKER_ARGS extra flags for `docker run`, e.g. --network host
+set -eu
+
+IMAGE="${SENDREPO_IMAGE:-sendrepo-cli:latest}"
+CONFIG_DIR="${SENDREPO_CONFIG_DIR:-$HOME/.config/sendrepo}"
+SSH_DIR="${SENDREPO_SSH_DIR:-$HOME/.ssh}"
+WORKSPACE="${SENDREPO_WORKSPACE:-$PWD}"
+
+if [ ! -f "$CONFIG_DIR/config.yaml" ]; then
+    printf '\033[31m[err]\033[0m No config.yaml in %s\n' "$CONFIG_DIR" >&2
+    printf '      Set SENDREPO_CONFIG_DIR to where yours lives.\n' >&2
+    exit 1
+fi
+
+# post_send hooks run `ssh -t`, which needs a TTY — but keep this usable from
+# a script or CI, where stdin is not a terminal.
+if [ -t 0 ] && [ -t 1 ]; then TTY_FLAGS="-it"; else TTY_FLAGS="-i"; fi
+
+# Run as you, not root, so a `git pull` in a pre_send hook doesn't leave
+# root-owned files in your checkout. Group 0 is deliberate: it lets the
+# entrypoint register a passwd entry for your uid, which ssh requires.
+# Set SENDREPO_DOCKER_USER=root to opt out.
+DOCKER_USER="${SENDREPO_DOCKER_USER:-$(id -u):0}"
+
+# Word-splitting SENDREPO_DOCKER_ARGS is intentional — it carries extra flags.
+# shellcheck disable=SC2086
+exec docker run --rm $TTY_FLAGS \
+    --user "$DOCKER_USER" \
+    -v "$WORKSPACE:/workspace" \
+    -v "$CONFIG_DIR:/config:ro" \
+    -v "$SSH_DIR:/ssh-keys:ro" \
+    -e "SENDREPO_SSH_ACCEPT_NEW=${SENDREPO_SSH_ACCEPT_NEW:-0}" \
+    -e "SENDREPO_PROJECT=${SENDREPO_PROJECT:-}" \
+    ${SENDREPO_DOCKER_ARGS:-} \
+    "$IMAGE" "$@"

@@ -12,7 +12,7 @@ SendRepo is a powerful and flexible Python script that automates the process of 
 -   **Flexible Exclusions**: Easily specify files and directories to exclude from the sync with both project-specific and global exclude patterns.
 -   **Partial Sync**: Send only specific files or folders with `--only` for quick one-off pushes (e.g. a single favicon) without disturbing the rest of the remote.
 -   **Easy Setup**: Includes a helper script to add the tool to your system's PATH for easy access from anywhere.
--   **Container-Friendly**: A POSIX `install.sh` installs SendRepo and its dependencies into Docker images, plus a ready-made GitHub Actions self-hosted runner for rsync-over-SSH deploys.
+-   **Container-Friendly**: A POSIX `install.sh` installs SendRepo and its dependencies into Docker images, plus a ready-made CLI image (`sr-docker` — deploy with only Docker installed, no Python/rsync/WSL) and a GitHub Actions self-hosted runner for rsync-over-SSH deploys.
 -   **Config Sync Hook**: Automatically update your configuration from a Git repository or cloud storage before syncing projects using the `--sync-config` flag.
 -   **Quick Access**: Use `--open` to instantly open the SendRepo directory in your file manager for easy editing of global excludes or git operations.
 
@@ -78,6 +78,85 @@ docker run --rm -it \
   -v "$HOME/.ssh:/root/.ssh:ro" \
   your-image sr my-project
 ```
+
+## Ready-Made CLI Container (no install at all)
+
+`Dockerfile.cli` packages SendRepo as a one-shot command, for teammates who should be
+able to deploy without installing Python, PyYAML, rsync or WSL — Docker is the only
+requirement. The image ships `sendrepo`/`sr`, `rsync`, `openssh-client` and `git`
+(pre-send hooks are usually `git pull`), and is ~100 MB.
+
+**Build and share it:**
+```bash
+docker build -f Dockerfile.cli -t sendrepo-cli .
+
+# or publish once, so nobody has to clone this repo:
+docker tag sendrepo-cli ghcr.io/polylvst/sendrepo-cli:latest
+docker push ghcr.io/polylvst/sendrepo-cli:latest
+```
+
+**Run it:**
+```bash
+./sr-docker my-project              # Linux / macOS — sends the current directory
+./sr-docker my-project --dry-run
+.\sr-docker.ps1 my-project          # Windows (PowerShell)
+```
+
+Both wrappers are thin: they mount the current directory, your config and your SSH
+keys, then run the image. Drop `sr-docker` somewhere on `PATH` (e.g. `~/.local/bin/sr`)
+and it feels like a local install. The raw form is:
+
+```bash
+docker run --rm -it \
+  -v "$PWD:/workspace" \
+  -v "$HOME/.config/sendrepo:/config:ro" \
+  -v "$HOME/.ssh:/ssh-keys:ro" \
+  sendrepo-cli my-project
+```
+
+A `docker-compose.cli.yaml` is included for the same thing via
+`docker compose -f docker-compose.cli.yaml run --rm sendrepo my-project`.
+
+### How the mounts work
+
+| Mount | Holds |
+| --- | --- |
+| `/workspace` | The project being sent. **Whichever project name you pass on the command line is repointed at this mount**, so the host paths in `config.yaml` (`{root}/projects/foo`) never have to exist inside the container. |
+| `/config` | Directory with `config.yaml`, plus `.sr-ignore-global.txt` if you use one. Read-only is fine — it is copied to a writable run dir. |
+| `/ssh-keys` | Directory with the deploy key and (ideally) `known_hosts`. Read-only is fine — the entrypoint copies it out and applies the 0600/0700 modes ssh insists on, which a bind mount can't give it. |
+
+Because the project path is rewritten, everyone can share **one** `config.yaml`
+regardless of where they keep their checkouts — only the `remote:` matters.
+
+### Environment variables
+
+| Variable | Effect |
+| --- | --- |
+| `SENDREPO_IMAGE` | Image the wrappers run (default `sendrepo-cli:latest`) |
+| `SENDREPO_CONFIG_DIR` / `SENDREPO_SSH_DIR` / `SENDREPO_WORKSPACE` | Override what the wrappers mount |
+| `SENDREPO_DOCKER_ARGS` | Extra `docker run` flags, e.g. `--network host` |
+| `SENDREPO_SSH_ACCEPT_NEW=1` | Trust an unknown host on first connect, instead of mounting `known_hosts` |
+| `SENDREPO_PROJECT` | Force which project gets repointed at `/workspace` |
+| `SENDREPO_NO_WORKSPACE=1` | Don't repoint anything — use the paths in `config.yaml` as-is (mount them yourself) |
+| `SSH_PRIVATE_KEY` | Key *contents*, for CI where mounting a file is awkward |
+
+### Notes and gotchas
+
+- **Guard rail:** if nothing is mounted at `/workspace`, the container refuses to run.
+  A full sync uses `rsync --delete`, so an empty source would erase the remote.
+- **Don't use `--user 1000:1000`.** ssh aborts with *"No user exists for uid"* when the
+  uid has no passwd entry. `sr-docker` runs as `$(id -u):0` — group 0 lets the
+  entrypoint register that entry — so hooks like `git pull` don't leave root-owned
+  files in your checkout. The plain root default works too.
+- **Interactive hooks:** `post_send` steps that run `ssh -t` need `-it` (the wrappers
+  add it when attached to a terminal).
+- **`--sync-config` is a host job.** The container works from a copy of your config, so
+  syncing it inside has no lasting effect. Update the config on the host and re-run.
+- **SSH agent:** forward it with
+  `SENDREPO_DOCKER_ARGS="-v $SSH_AUTH_SOCK:/ssh-agent -e SSH_AUTH_SOCK=/ssh-agent"`
+  instead of mounting a key.
+
+This image is the deploy *client*. For CI, see the self-hosted runner below.
 
 ## GitHub Actions Self-Hosted Runner
 

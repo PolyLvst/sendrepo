@@ -1,0 +1,13 @@
+# Keep secrets and local state out of the build context — anything COPYed lands
+# in an image layer and survives a later `rm -rf`, even if the file looks gone.
+.env
+.env.*
+!.env.example.runner
+ssh/
+config.yaml
+.sendrepo*/
+
+.git/
+__pycache__/
+venv*/
+*.pyc

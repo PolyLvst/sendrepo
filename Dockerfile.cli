@@ -1,0 +1,47 @@
+# SendRepo as a one-shot CLI container.
+#
+# Lets someone run `sr <project>` without installing Python, PyYAML, rsync or
+# the script itself on their machine — they only need Docker.
+#
+#   docker build -f Dockerfile.cli -t sendrepo-cli .
+#   docker run --rm -it \
+#       -v "$PWD:/workspace" \
+#       -v "$HOME/.config/sendrepo:/config:ro" \
+#       -v "$HOME/.ssh:/ssh-keys:ro" \
+#       sendrepo-cli my-project
+#
+# See sr-docker / sr-docker.ps1 for wrappers that fill in those mounts, and
+# README.md ("SendRepo in a Container") for the full story.
+#
+# NOTE: this is NOT the GitHub Actions runner — that one is Dockerfile.runner.
+FROM alpine:3.20
+
+# Everything sendrepo shells out to. git is here because pre_send hooks are
+# commonly `git pull`, and post_send hooks reach the server over ssh.
+RUN apk add --no-cache bash git openssh-client rsync python3 py3-yaml \
+    # ssh aborts ("No user exists for uid N") when the uid has no passwd entry,
+    # which is what `docker run --user 1000:0` gives you. Group 0 write access
+    # lets the entrypoint add one for itself.
+    && chgrp 0 /etc/passwd && chmod g+w /etc/passwd
+
+# Copy only what the installer needs — no .env, no config.yaml, no ssh keys
+# baked into a layer (see .dockerignore).
+COPY sendrepo.py install.sh .sr-ignore-global.txt /tmp/sendrepo/
+RUN cd /tmp/sendrepo \
+    && SKIP_PKGS=1 ./install.sh \
+    # Ship the repo's global ignore list as a fallback: sendrepo looks next to
+    # the installed script last, so a mounted /config one still wins.
+    && cp .sr-ignore-global.txt /usr/local/lib/sendrepo/.sr-ignore-global.txt \
+    && rm -rf /tmp/sendrepo
+
+# Shadows /usr/bin/ssh so the staged config is actually used — OpenSSH reads
+# ~/.ssh/config from the passwd database, not from $HOME. See ssh-wrapper.sh.
+COPY ssh-wrapper.sh /usr/local/bin/ssh
+
+# Stages ssh keys + config, points the project at the mounted /workspace,
+# then execs `sendrepo "$@"`.
+COPY cli-entrypoint.sh /usr/local/bin/sendrepo-entrypoint
+RUN chmod +x /usr/local/bin/sendrepo-entrypoint /usr/local/bin/ssh
+
+WORKDIR /workspace
+ENTRYPOINT ["/usr/local/bin/sendrepo-entrypoint"]

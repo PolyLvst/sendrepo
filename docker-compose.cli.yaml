@@ -1,0 +1,37 @@
+# SendRepo as a one-shot CLI container — for people who'd rather keep the
+# mounts in a file than in a wrapper script.
+#
+#   docker compose -f docker-compose.cli.yaml build
+#   docker compose -f docker-compose.cli.yaml run --rm sendrepo my-project
+#   docker compose -f docker-compose.cli.yaml run --rm sendrepo my-project --dry-run
+#
+# Paths come from a .env file next to this one (or the shell environment):
+#   SENDREPO_WORKSPACE=/home/you/projects/my-project
+#   SENDREPO_CONFIG_DIR=/home/you/.config/sendrepo
+#   SENDREPO_SSH_DIR=/home/you/.ssh
+#
+# This is the *deploy client*. The self-hosted GitHub Actions runner is a
+# separate stack: docker-compose.yaml + Dockerfile.runner.
+
+services:
+  sendrepo:
+    build:
+      context: .
+      dockerfile: Dockerfile.cli
+    image: sendrepo-cli
+    # post_send hooks shell out to `ssh -t`, which wants a terminal.
+    tty: true
+    stdin_open: true
+    environment:
+      # 1 = trust an unknown host on first connect (skip if you mount known_hosts).
+      SENDREPO_SSH_ACCEPT_NEW: ${SENDREPO_SSH_ACCEPT_NEW:-0}
+    volumes:
+      # The project being sent. Whichever project name you pass on the command
+      # line gets repointed at this mount, so config.yaml's host paths are
+      # irrelevant inside the container.
+      - ${SENDREPO_WORKSPACE:-.}:/workspace
+      # Dir holding config.yaml (and optionally .sr-ignore-global.txt).
+      - ${SENDREPO_CONFIG_DIR:-./sendrepo-config}:/config:ro
+      # Dir holding the deploy key + known_hosts. Mounted read-only; the
+      # entrypoint copies it out and fixes the permissions ssh insists on.
+      - ${SENDREPO_SSH_DIR:-./ssh}:/ssh-keys:ro
