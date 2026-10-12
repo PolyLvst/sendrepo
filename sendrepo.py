@@ -267,6 +267,7 @@ class SendRepo:
         port = project.get('port')
         ssh_jump_host = project.get('ssh_jump_host')
         backup_dir = project.get('backup_dir')
+        rsync_args = project.get('rsync_args', [])
 
         # Partial sync mode: validate the --only paths up front
         partial = bool(only)
@@ -327,6 +328,9 @@ class SendRepo:
 
         if dry_run:
             rsync_cmd.append('--dry-run')
+
+        # Extra per-project rsync flags (e.g. --blocking-io, --no-perms for a Windows target)
+        rsync_cmd.extend(str(a) for a in rsync_args)
 
         if checksum:
             print(f"{self._c('yellow', '[warn]')} Checksum mode — comparing by content, not timestamps")

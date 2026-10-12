@@ -272,6 +272,7 @@ projects:
         -   `port`: (Optional) The SSH port to use for the connection. Defaults to 22.
         -   `backup_dir`: (Optional) A directory on the remote server where files that are deleted from the destination will be moved. Use `{timestamp}` to create a unique, timestamped backup folder for each run.
         -   `exclude`: A list of files or directories to exclude from the sync.
+        -   `rsync_args`: (Optional) A list of extra flags passed to `rsync` for this project, e.g. `[--blocking-io, --no-perms, --no-owner, --no-group]` for a Windows target running cwRsync (without `--blocking-io` it can fail with "Resource temporarily unavailable"; `--no-perms` stops Cygwin rewriting Windows ACLs).
         -   `include`: (Optional) A list of patterns to *re-include* files that a broader exclude (project or global) would otherwise drop. Includes are applied before all excludes (rsync first-match-wins). For example, the global ignore file excludes `**/*.key`, so to push a specific certificate for mTLS on a home server, add `include: [home-ca.key]`. A bare filename matches at any depth; use a path like `certs/home-ca.key` to anchor it to a location.
         -   `pre_send`: (Optional) A shell command to run locally *before* the sync starts. The script will stop if this command fails.
         -   `post_send`: (Optional) A shell command to run *after* a successful sync.
